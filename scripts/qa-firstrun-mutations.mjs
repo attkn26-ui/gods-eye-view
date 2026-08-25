@@ -469,7 +469,7 @@ for (const [key, file] of Object.entries(FILES)) originals.set(key, fs.readFileS
 
 /** Write only on a real change: a no-op write still wakes every file watcher. */
 const write = (file, next) => {
-  if (fs.readFileSync(file, 'utf8') !== next) fs.writeFileSync(file, next);
+  if (file.includes('..') || path.isAbsolute(file)) throw new Error('Invalid file path'); if (fs.readFileSync(file, 'utf8') !== next) fs.writeFileSync(file, next);
 };
 const restoreAll = () => {
   for (const [key, file] of Object.entries(FILES)) write(file, originals.get(key));
