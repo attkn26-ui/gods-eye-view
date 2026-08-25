@@ -477,7 +477,12 @@ function readOverlaySummary(layerId, jsonPath) {
       return fail(`0 measured, ${skipped} skipped — the ${layerId} scene produced nothing to measure, so the layer never activated`);
     }
     let run = null;
-    try { run = JSON.parse(readFileSync(jsonPath, 'utf8')); } catch (e) {
+    try {
+      if (jsonPath.includes('..') || path.isAbsolute(jsonPath)) {
+        return crash(`invalid path provided; this check cannot prove the ${layerId} overlay was nonempty`);
+      }
+      run = JSON.parse(readFileSync(jsonPath, 'utf8'));
+    } catch (e) {
       return crash(`harness reported ${measured} measured but wrote no readable --json (${String(e?.message || e).slice(0, 80)}); this check cannot prove the ${layerId} overlay was nonempty`);
     }
     const act = (run.scenes || [])
@@ -505,7 +510,13 @@ const OVERLAY_JSON = resolve(HARNESS_LOG_DIR, 'D12-overlay-baseline.json');
 function harness({ id, script, args = [], parse = readResultLine, timeoutMs = 900000, envExtra = {}, knownConditions = [] }) {
   return async () => {
     mkdirSync(HARNESS_LOG_DIR, { recursive: true });
-    const r = await sh(process.execPath, [resolve(REPO_ROOT, 'scripts', script), ...args], {
+    const scriptPath = resolve(REPO_ROOT, 'scripts', script);
+    const scriptsBase = resolve(REPO_ROOT, 'scripts');
+    const relativeCheck = path.relative(scriptsBase, scriptPath);
+    if (relativeCheck.startsWith('..') || path.isAbsolute(relativeCheck)) {
+      throw new Error('Invalid script path');
+    }
+    const r = await sh(process.execPath, [scriptPath, ...args], {
       timeoutMs,
       env: { QA_BASE_URL: APP_URL, ...envExtra },
     });
@@ -528,7 +539,13 @@ function harness({ id, script, args = [], parse = readResultLine, timeoutMs = 90
     if (verdict.status !== PASS) {
       try {
         mkdirSync(HARNESS_LOG_DIR, { recursive: true });
-        const logPath = resolve(HARNESS_LOG_DIR, `${id || script.replace(/\.mjs$/, '')}.log`);
+        const logFileName = id || script.replace(/\.mjs$/, '');
+        const logPath = resolve(HARNESS_LOG_DIR, logFileName);
+        const logBase = resolve(HARNESS_LOG_DIR);
+        const logRelativeCheck = path.relative(logBase, logPath);
+        if (logRelativeCheck.startsWith('..') || path.isAbsolute(logRelativeCheck)) {
+          throw new Error('Invalid log path');
+        }
         writeFileSync(logPath, `$ node scripts/${script} ${args.join(' ')}\nexit=${r.code} signal=${r.signal}\n\n--- stdout ---\n${r.out}\n--- stderr ---\n${r.err}\n`);
         verdict.detail = `${verdict.detail}  [log: ${logPath.replace(`${REPO_ROOT}/`, '')}]`;
       } catch { /* logging must never change a verdict */ }
