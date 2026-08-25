@@ -513,8 +513,8 @@ function harness({ id, script, args = [], parse = readResultLine, timeoutMs = 90
     mkdirSync(HARNESS_LOG_DIR, { recursive: true });
     const scriptPath = resolve(REPO_ROOT, 'scripts', script);
     const scriptsBase = resolve(REPO_ROOT, 'scripts');
-    const relativeScriptPath = path.relative(scriptsBase, scriptPath);
-    if (relativeScriptPath.startsWith('..') || path.isAbsolute(relativeScriptPath)) {
+    const relativeCheck = path.relative(scriptsBase, scriptPath);
+    if (relativeCheck.startsWith('..') || path.isAbsolute(relativeCheck)) {
       throw new Error('Invalid script path');
     }
     const r = await sh(process.execPath, [scriptPath, ...args], {
@@ -541,10 +541,10 @@ function harness({ id, script, args = [], parse = readResultLine, timeoutMs = 90
       try {
         mkdirSync(HARNESS_LOG_DIR, { recursive: true });
         const logFileName = id || script.replace(/\.mjs$/, '');
-        const logPath = resolve(HARNESS_LOG_DIR, logFileName + '.log');
+        const logPath = resolve(HARNESS_LOG_DIR, logFileName);
         const logBase = resolve(HARNESS_LOG_DIR);
-        const relativeLogPath = path.relative(logBase, logPath);
-        if (relativeLogPath.startsWith('..') || path.isAbsolute(relativeLogPath)) {
+        const logRelativeCheck = path.relative(logBase, logPath);
+        if (logRelativeCheck.startsWith('..') || path.isAbsolute(logRelativeCheck)) {
           throw new Error('Invalid log path');
         }
         writeFileSync(logPath, `$ node scripts/${script} ${args.join(' ')}\nexit=${r.code} signal=${r.signal}\n\n--- stdout ---\n${r.out}\n--- stderr ---\n${r.err}\n`);
