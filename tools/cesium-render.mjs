@@ -47,6 +47,7 @@
 
 import { readFileSync, mkdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
+import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:http';
 import puppeteer from 'puppeteer';
@@ -204,7 +205,15 @@ function startServer() {
     } else if (url.pathname === '/' || url.pathname === '/index.html') {
       filePath = RENDER_HTML;
     } else if (url.pathname.startsWith('/cesium/')) {
-      filePath = join(CESIUM_ROOT, url.pathname.slice('/cesium/'.length));
+      const base = path.resolve(CESIUM_ROOT);
+      const target = path.resolve(base, url.pathname.slice('/cesium/'.length));
+      const relative = path.relative(base, target);
+      if (relative.startsWith('..') || path.isAbsolute(relative)) {
+        res.writeHead(404);
+        res.end('Not found');
+        return;
+      }
+      filePath = target;
     } else {
       res.writeHead(404);
       res.end('Not found');
