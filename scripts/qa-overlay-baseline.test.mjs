@@ -1,4 +1,4 @@
-// src/pathTraversalSecurity.test.mjs
+// scripts/qa-overlay-baseline.test.mjs
 //
 // Security tests for path traversal vulnerability mitigation in captureShot().
 // The mitigation (2024) validates that resolved paths stay within the intended
@@ -74,47 +74,42 @@ test('captureShot: sanitizes special characters in sceneId', async () => {
   }
 });
 
-test('captureShot: sanitizes path traversal attempts in sceneId', async () => {
+test('captureShot: blocks path traversal via ../ in sceneId', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gev-test-'));
   try {
     const page = createMockPage();
     
-    // Path traversal characters are sanitized before path validation
-    // The sceneId '../../../etc/passwd' - each non-alphanumeric becomes '-'
-    const result = await captureShot(page, tmpDir, '../../../etc/passwd', 'exploit');
-    
-    // Verify file was created safely within the base directory
-    assert.ok(result, 'should return a path');
-    assert.ok(result.startsWith(tmpDir), 'path should be within base directory');
-    // The sanitized name will have all special chars replaced with '-'
-    assert.ok(result.endsWith('-exploit.png'), 'should sanitize traversal chars');
-    assert.ok(fs.existsSync(result), 'screenshot file should exist in safe location');
+    // Attempt to traverse up and write outside the base directory
+    await assert.rejects(
+      async () => captureShot(page, tmpDir, '../../../etc/passwd', 'exploit'),
+      /Invalid file path/,
+      'should reject path traversal attempt'
+    );
     
     // Verify no file was created outside the base directory
     const parentDir = path.dirname(tmpDir);
-    const potentialEscapedPath = path.join(parentDir, 'etc', 'passwd-exploit.png');
+    const potentialEscapedPath = path.join(parentDir, 'etc-passwd-exploit.png');
     assert.ok(!fs.existsSync(potentialEscapedPath), 'should not create file outside base dir');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
 
-test('captureShot: sanitizes absolute path attempts in sceneId', async () => {
+test('captureShot: blocks absolute path injection in sceneId', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gev-test-'));
   try {
     const page = createMockPage();
     
-    // Absolute path characters (/) are sanitized before path validation
-    const maliciousPath = '/tmp/malicious-file';
-    const result = await captureShot(page, tmpDir, maliciousPath, 'exploit');
+    // Attempt to use absolute path to write to /tmp
+    const maliciousPath = path.join(os.tmpdir(), 'malicious-file');
+    await assert.rejects(
+      async () => captureShot(page, tmpDir, maliciousPath, 'exploit'),
+      /Invalid file path/,
+      'should reject absolute path injection'
+    );
     
-    // Verify file was created safely within the base directory
-    assert.ok(result, 'should return a path');
-    assert.ok(result.startsWith(tmpDir), 'path should be within base directory');
-    assert.ok(result.includes('tmp-malicious-file-exploit.png'), 'should sanitize path separators');
-    
-    // Verify the malicious file was not created at the absolute path
-    assert.ok(!fs.existsSync('/tmp/malicious-file-exploit.png'), 'should not create file at absolute path');
+    // Verify the malicious file was not created
+    assert.ok(!fs.existsSync(`${maliciousPath}-exploit.png`), 'should not create file at absolute path');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -125,7 +120,7 @@ test('captureShot: blocks path traversal via suffix parameter', async () => {
   try {
     const page = createMockPage();
     
-    // Suffix is NOT sanitized, so path traversal through suffix should be blocked
+    // Attempt traversal through suffix parameter
     await assert.rejects(
       async () => captureShot(page, tmpDir, 'scene', '../../../tmp/exploit'),
       /Invalid file path/,
@@ -136,24 +131,24 @@ test('captureShot: blocks path traversal via suffix parameter', async () => {
   }
 });
 
-test('captureShot: sanitizes various traversal patterns in sceneId', async () => {
+test('captureShot: blocks mixed traversal attempts', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gev-test-'));
   try {
     const page = createMockPage();
     
-    // Multiple traversal patterns - all get sanitized
+    // Multiple traversal patterns
     const traversalPatterns = [
-      { sceneId: '..', suffix: 'test', desc: 'double dots' },
+      { sceneId: '..', suffix: '..', desc: 'double parent reference' },
       { sceneId: 'scene/../../../etc', suffix: 'passwd', desc: 'traversal in middle' },
       { sceneId: '....//....//etc', suffix: 'shadow', desc: 'obfuscated traversal' },
     ];
     
     for (const pattern of traversalPatterns) {
-      const result = await captureShot(page, tmpDir, pattern.sceneId, pattern.suffix);
-      assert.ok(result, `should return a path for ${pattern.desc}`);
-      assert.ok(result.startsWith(tmpDir), `path should be within base directory for ${pattern.desc}`);
-      assert.ok(result.endsWith(`-${pattern.suffix}.png`), `should sanitize ${pattern.desc}`);
-      assert.ok(fs.existsSync(result), `file should exist for ${pattern.desc}`);
+      await assert.rejects(
+        async () => captureShot(page, tmpDir, pattern.sceneId, pattern.suffix),
+        /Invalid file path/,
+        `should reject ${pattern.desc}`
+      );
     }
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -164,6 +159,22 @@ test('captureShot: returns null when shotsDir is not provided', async () => {
   const page = createMockPage();
   const result = await captureShot(page, null, 'scene', 'suffix');
   assert.strictEqual(result, null, 'should return null when shotsDir is null');
+});
+
+test('captureShot: creates nested directory structure safely', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gev-test-'));
+  try {
+    const page = createMockPage();
+    const nestedDir = path.join(tmpDir, 'nested', 'shots');
+    
+    const result = await captureShot(page, nestedDir, 'scene', 'test');
+    
+    assert.ok(result, 'should return a path');
+    assert.ok(fs.existsSync(result), 'screenshot file should exist in nested directory');
+    assert.ok(result.startsWith(nestedDir), 'path should be within nested base directory');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
 
 test('captureShot: validates relative path stays within base directory', async () => {

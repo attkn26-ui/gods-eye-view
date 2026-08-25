@@ -753,9 +753,14 @@ async function captureShot(page, shotsDir, sceneId, suffix) {
   if (!shotsDir) return null;
   fs.mkdirSync(shotsDir, { recursive: true });
   const safeScene = sceneId.replace(/[^a-z0-9-]+/gi, '-');
-  const outPath = path.join(shotsDir, `${safeScene}-${suffix}.png`);
-  await page.screenshot({ path: outPath });
-  return outPath;
+  const base = path.resolve(shotsDir);
+  const target = path.resolve(base, `${safeScene}-${suffix}.png`);
+  const relative = path.relative(base, target);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error('Invalid file path');
+  }
+  await page.screenshot({ path: target });
+  return target;
 }
 
 async function runScene(browser, scene, shotsDir) {
