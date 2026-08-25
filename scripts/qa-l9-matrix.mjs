@@ -41,6 +41,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import * as path from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..');
@@ -2341,7 +2342,7 @@ export {
   PASS, PASS_SKIPS, FAIL, CRASH, SKIP, OUTCOMES,
   normalizeVerdict, classifyNoScoreboard, readResultLine, readCockpit, satisfiesEngines,
   isCalibratedAllocationRuntime, trafficFlowInconclusive,
-  soleVerdict, RESULT_RE, COCKPIT_RE, FLOOR_RE,
-  readFloorVerdict, keyGuard, applyKnownConditions, requiredCreditFor,
+  soleVerdict, RESULT_RE, COCKPIT_RE, FLOOR_RE, OVERLAY_RE,
+  readFloorVerdict, readOverlaySummary, keyGuard, applyKnownConditions, requiredCreditFor,
   CREDIT_EXPECTATIONS, CREDIT_EXEMPT_LAYERS,
 };

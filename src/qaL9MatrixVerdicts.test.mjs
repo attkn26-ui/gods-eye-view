@@ -9,9 +9,9 @@ import assert from 'node:assert/strict';
 import {
   PASS, PASS_SKIPS, FAIL, CRASH, SKIP, OUTCOMES,
   normalizeVerdict, classifyNoScoreboard, readResultLine, readCockpit,
-  readFloorVerdict, keyGuard, applyKnownConditions, requiredCreditFor, satisfiesEngines,
+  readFloorVerdict, readOverlaySummary, keyGuard, applyKnownConditions, requiredCreditFor, satisfiesEngines,
   isCalibratedAllocationRuntime, trafficFlowInconclusive,
-  CREDIT_EXPECTATIONS, CREDIT_EXEMPT_LAYERS,
+  CREDIT_EXPECTATIONS, CREDIT_EXEMPT_LAYERS, OVERLAY_RE,
 } from '../scripts/qa-l9-matrix.mjs';
 
 const run = (over = {}) => ({ code: 0, out: '', err: '', timedOut: false, ...over });
