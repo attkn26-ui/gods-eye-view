@@ -132,7 +132,13 @@ async function captureLayerControl(page, layerId, filename) {
     return !!rect && rect.width > 0 && rect.height > 0;
   }, { timeout: 5_000 }, layerId);
   await sleep(100);
-  await row.screenshot({ path: path.join(ARTIFACT_DIR, filename) });
+  const base = path.resolve(ARTIFACT_DIR);
+  const target = path.resolve(base, filename);
+  const relative = path.relative(base, target);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error('Invalid filename');
+  }
+  await row.screenshot({ path: target });
 }
 
 // A minimal but valid TLE for one satellite (ISS), so the "good catalog" pass
