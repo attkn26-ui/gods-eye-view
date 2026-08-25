@@ -23,6 +23,7 @@
 
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
+import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -155,8 +156,14 @@ async function fetchHeadingsForLocation(lat, lon, label, directions, opts, apiKe
     }
 
     const buf = Buffer.from(await res.arrayBuffer());
-    const outPath = join(outdir, `sv_${lat.toFixed(6)}_${lon.toFixed(6)}_${dir.heading.toString().padStart(3, '0')}_${dir.name}.jpg`);
-    writeFileSync(outPath, buf);
+    const base = path.resolve(outdir);
+    const target = path.resolve(base, `sv_${lat.toFixed(6)}_${lon.toFixed(6)}_${dir.heading.toString().padStart(3, '0')}_${dir.name}.jpg`);
+    const rel = path.relative(base, target);
+    if (rel.startsWith('..') || path.isAbsolute(rel)) {
+      console.log(`    ${dir.name} (${dir.heading}): FAILED - invalid path`);
+      continue;
+    }
+    writeFileSync(target, buf);
     console.log(`    ${dir.name} (${dir.heading}): ${(buf.length / 1024).toFixed(1)} KB`);
   }
 }
