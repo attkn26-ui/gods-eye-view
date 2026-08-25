@@ -9,9 +9,9 @@ import assert from 'node:assert/strict';
 import {
   PASS, PASS_SKIPS, FAIL, CRASH, SKIP, OUTCOMES,
   normalizeVerdict, classifyNoScoreboard, readResultLine, readCockpit,
-  readFloorVerdict, keyGuard, applyKnownConditions, requiredCreditFor, satisfiesEngines,
+  readFloorVerdict, readOverlaySummary, keyGuard, applyKnownConditions, requiredCreditFor, satisfiesEngines,
   isCalibratedAllocationRuntime, trafficFlowInconclusive,
-  CREDIT_EXPECTATIONS, CREDIT_EXEMPT_LAYERS,
+  CREDIT_EXPECTATIONS, CREDIT_EXEMPT_LAYERS, OVERLAY_RE,
 } from '../scripts/qa-l9-matrix.mjs';
 
 const run = (over = {}) => ({ code: 0, out: '', err: '', timedOut: false, ...over });
@@ -229,5 +229,64 @@ test('credit exemptions are explicit and carry a reason', () => {
 test('expectation and exemption lists never overlap', () => {
   for (const id of Object.keys(CREDIT_EXEMPT_LAYERS)) {
     assert.equal(CREDIT_EXPECTATIONS[id], undefined, `${id} cannot be both expected and exempt`);
+  }
+});
+
+// ── path traversal vulnerability mitigation ───────────────────────────────
+test('readOverlaySummary rejects paths with .. traversal sequences', () => {
+  // Path traversal attempts should be rejected before file access
+  const dangerousPaths = [
+    '../etc/passwd',
+    '../../sensitive-file.json',
+    'logs/../../../etc/passwd',
+    './logs/../../secrets.json',
+  ];
+  
+  for (const jsonPath of dangerousPaths) {
+    const parser = readOverlaySummary('test-layer', jsonPath);
+    // Provide a successful scoreboard so the parser reaches the path validation
+    const verdict = parser(run({ code: 0, out: 'Summary: 5 measured · 0 skipped · 0 errors' }));
+    assert.equal(verdict.status, CRASH, `path "${jsonPath}" should be rejected`);
+    assert.match(verdict.detail, /invalid path.*cannot prove.*overlay/i, 
+      `rejection should mention invalid path for "${jsonPath}"`);
+  }
+});
+
+test('readOverlaySummary rejects absolute paths', () => {
+  // Absolute paths should be rejected to prevent access outside intended directory
+  const absolutePaths = [
+    '/etc/passwd',
+    '/tmp/malicious.json',
+    '/var/log/secrets.json',
+  ];
+  
+  for (const jsonPath of absolutePaths) {
+    const parser = readOverlaySummary('test-layer', jsonPath);
+    // Provide a successful scoreboard so the parser reaches the path validation
+    const verdict = parser(run({ code: 0, out: 'Summary: 5 measured · 0 skipped · 0 errors' }));
+    assert.equal(verdict.status, CRASH, `absolute path "${jsonPath}" should be rejected`);
+    assert.match(verdict.detail, /invalid path.*cannot prove.*overlay/i, 
+      `rejection should mention invalid path for "${jsonPath}"`);
+  }
+});
+
+test('readOverlaySummary accepts safe relative paths', () => {
+  // Safe relative paths within the intended directory should work
+  // Note: This test verifies the validation logic, not actual file reading
+  const safePaths = [
+    'overlay-baseline.json',
+    'logs/test-output.json',
+    './data/results.json',
+  ];
+  
+  for (const jsonPath of safePaths) {
+    const parser = readOverlaySummary('test-layer', jsonPath);
+    // The verdict will fail on file read (file doesn't exist), but should NOT
+    // be rejected for path traversal
+    const verdict = parser(run({ code: 0, out: 'Summary: 5 measured · 0 skipped · 0 errors' }));
+    // Should crash on file read, not on path validation
+    assert.equal(verdict.status, CRASH);
+    assert.match(verdict.detail, /no readable --json/i, 
+      `safe path "${jsonPath}" should fail on file read, not path validation`);
   }
 });
