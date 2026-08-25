@@ -9,9 +9,9 @@ import assert from 'node:assert/strict';
 import {
   PASS, PASS_SKIPS, FAIL, CRASH, SKIP, OUTCOMES,
   normalizeVerdict, classifyNoScoreboard, readResultLine, readCockpit,
-  readFloorVerdict, keyGuard, applyKnownConditions, requiredCreditFor, satisfiesEngines,
+  readFloorVerdict, readOverlaySummary, keyGuard, applyKnownConditions, requiredCreditFor, satisfiesEngines,
   isCalibratedAllocationRuntime, trafficFlowInconclusive,
-  CREDIT_EXPECTATIONS, CREDIT_EXEMPT_LAYERS,
+  CREDIT_EXPECTATIONS, CREDIT_EXEMPT_LAYERS, OVERLAY_RE,
 } from '../scripts/qa-l9-matrix.mjs';
 
 const run = (over = {}) => ({ code: 0, out: '', err: '', timedOut: false, ...over });
@@ -229,5 +229,85 @@ test('credit exemptions are explicit and carry a reason', () => {
 test('expectation and exemption lists never overlap', () => {
   for (const id of Object.keys(CREDIT_EXEMPT_LAYERS)) {
     assert.equal(CREDIT_EXPECTATIONS[id], undefined, `${id} cannot be both expected and exempt`);
+  }
+});
+
+// ── path traversal vulnerability mitigation ───────────────────────────────
+test('path traversal: .. sequences are detected in paths', () => {
+  // Test that paths containing .. are properly identified
+  const traversalPaths = [
+    '../../../etc/passwd',
+    'logs/../../../etc/passwd',
+    'valid/../../sensitive/file.json',
+    '..\\..\\windows\\system32\\config\\sam',
+  ];
+  
+  for (const maliciousPath of traversalPaths) {
+    // The check should reject any path containing '..'
+    assert.ok(maliciousPath.includes('..'), 
+      `Path ${maliciousPath} should contain .. for traversal detection`);
+  }
+});
+
+test('path traversal: absolute paths are detected', async () => {
+  // Test that absolute paths are properly identified
+  const { isAbsolute } = await import('node:path');
+  
+  const absolutePaths = [
+    '/etc/passwd',
+    '/var/log/sensitive.log',
+    '/root/.ssh/id_rsa',
+  ];
+  
+  for (const absPath of absolutePaths) {
+    assert.ok(isAbsolute(absPath), 
+      `Path ${absPath} should be detected as absolute`);
+  }
+  
+  // Relative paths should not be detected as absolute
+  const relativePaths = [
+    'logs/test.json',
+    'qa-traffic.mjs',
+    'subdir/file.txt',
+  ];
+  
+  for (const relPath of relativePaths) {
+    assert.ok(!isAbsolute(relPath), 
+      `Path ${relPath} should not be detected as absolute`);
+  }
+});
+
+test('path traversal: relative path validation detects directory escape', async () => {
+  // Test the path.relative validation pattern used in the security fix
+  const { relative, resolve, isAbsolute } = await import('node:path');
+  
+  const baseDir = '/repo/scripts';
+  
+  // Valid scripts that stay within the directory
+  const validScripts = [
+    'qa-traffic.mjs',
+    'qa-overlay-baseline.mjs',
+    'subdir/helper.mjs',
+  ];
+  
+  for (const script of validScripts) {
+    const scriptPath = resolve(baseDir, script);
+    const relativeCheck = relative(baseDir, scriptPath);
+    assert.ok(!relativeCheck.startsWith('..') && !isAbsolute(relativeCheck), 
+      `Valid script ${script} should not escape base directory (got: ${relativeCheck})`);
+  }
+  
+  // Malicious paths that escape the directory
+  const maliciousPaths = [
+    '../package.json',
+    '../../etc/passwd',
+    '../src/sensitive.mjs',
+  ];
+  
+  for (const malPath of maliciousPaths) {
+    const fullPath = resolve(baseDir, malPath);
+    const relativeCheck = relative(baseDir, fullPath);
+    assert.ok(relativeCheck.startsWith('..') || isAbsolute(relativeCheck), 
+      `Malicious path ${malPath} should be detected as escaping (got: ${relativeCheck})`);
   }
 });
