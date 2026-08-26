@@ -273,6 +273,35 @@ export function localDatasetError(error) {
 }
 
 /**
+ * Build and validate a URL for fetching GeoJSON data.
+ * @param {string} baseUrl The base URL to validate.
+ * @returns {string} The validated URL.
+ */
+function buildValidatedUrl(baseUrl) {
+  try {
+    // Minimal path validation
+    if (baseUrl.includes('/../') || /\/%2e%2e\//i.test(baseUrl)) {
+      throw new Error('Invalid path');
+    }
+    
+    const url = new URL(baseUrl);
+    
+    // Protocol + host checks
+    const allowedDomains = ['example.com']; // add your allowed domains here
+    if (!allowedDomains.includes(url.hostname)) {
+      throw new Error('Invalid host');
+    }
+    if (!['http:', 'https:'].includes(url.protocol)) {
+      throw new Error('Invalid protocol');
+    }
+    
+    return url.href;
+  } catch {
+    throw new Error('Invalid URL');
+  }
+}
+
+/**
  * A minimal, rock-solid native implementation for loading local GeoJSON Data.
  * Draws 3D stems (polylines) attached to Point entities and ensures
  * standard scene.pick natively clicks them.
@@ -421,7 +450,8 @@ export function createLocalGeoJsonLayer({
         // windows (before vs after the add settles) need different cleanup.
         let addedToScene = false;
         try {
-          const response = await fetch(url);
+          const validatedUrl = buildValidatedUrl(url);
+          const response = await fetch(validatedUrl);
           // A 404 returns an HTML body that would otherwise die in JSON.parse
           // one line later, reported as a parse error for a missing file.
           if (!response.ok) {
